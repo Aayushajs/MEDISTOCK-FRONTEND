@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
     View,
     Text,
@@ -6,10 +6,12 @@ import {
     StyleSheet,
     TouchableOpacity,
     Switch,
+    Alert,
+    ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useTheme } from '../../context/ThemeContext';
-import { useAuth } from '../../context/AuthContext';
+import { useThemeStore } from '../../stores/useThemeStore';
+import { useAuthStore, selectUser, selectIsLoading } from '../../stores/useAuthStore';
 import GlassCard from '../common/GlassCard';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../utils/constants';
 
@@ -18,8 +20,11 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, SHADOWS } from '../../utils
 // ============================================
 
 const SettingsScreen: React.FC = () => {
-    const { colors, isDark, toggleTheme } = useTheme();
-    const { user, logout } = useAuth();
+    const { colors, isDark, toggleTheme } = useThemeStore();
+    const user = useAuthStore(selectUser);
+    const isLoading = useAuthStore(selectIsLoading);
+    const logout = useAuthStore((state) => state.logout);
+    
     const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
 
     const settingsGroups = [
@@ -105,10 +110,17 @@ const SettingsScreen: React.FC = () => {
                 {/* Profile Card */}
                 <GlassCard style={styles.profileCard}>
                     <View style={styles.avatarLarge}>
-                        <Text style={styles.avatarText}>🏪</Text>
+                        {user?.ProfileImage?.[0] ? (
+                            <Text style={styles.avatarText}>👤</Text>
+                        ) : (
+                            <Text style={styles.avatarText}>🏪</Text>
+                        )}
                     </View>
                     <Text style={[styles.storeName, { color: colors.text }]}>
-                        {user?.storeName || 'MediCare Pharmacy'}
+                        {user?.name || 'MediCare Pharmacy'}
+                    </Text>
+                    <Text style={[styles.emailText, { color: colors.textSecondary }]}>
+                        {user?.email || ''}
                     </Text>
                     <View style={styles.ratingRow}>
                         <Icon name="star" size={16} color="#FFD700" />
@@ -137,9 +149,32 @@ const SettingsScreen: React.FC = () => {
                 </Text>
 
                 {/* Logout Button */}
-                <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-                    <Icon name="log-out-outline" size={20} color={COLORS.danger} />
-                    <Text style={styles.logoutText}>Logout</Text>
+                <TouchableOpacity 
+                    style={styles.logoutButton} 
+                    onPress={() => {
+                        Alert.alert(
+                            'Logout',
+                            'Are you sure you want to logout?',
+                            [
+                                { text: 'Cancel', style: 'cancel' },
+                                { 
+                                    text: 'Logout', 
+                                    style: 'destructive',
+                                    onPress: () => logout()
+                                },
+                            ]
+                        );
+                    }}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator size="small" color={COLORS.danger} />
+                    ) : (
+                        <>
+                            <Icon name="log-out-outline" size={20} color={COLORS.danger} />
+                            <Text style={styles.logoutText}>Logout</Text>
+                        </>
+                    )}
                 </TouchableOpacity>
             </ScrollView>
         </View>
@@ -171,6 +206,7 @@ const styles = StyleSheet.create({
     },
     avatarText: { fontSize: 36 },
     storeName: { fontSize: FONT_SIZES.xl, fontWeight: '700' },
+    emailText: { fontSize: FONT_SIZES.sm, marginTop: 4 },
     ratingRow: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.xs },
     ratingText: { marginLeft: 4, fontSize: FONT_SIZES.sm },
     editButton: {

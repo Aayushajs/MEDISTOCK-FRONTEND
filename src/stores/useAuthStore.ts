@@ -1,33 +1,43 @@
+// ═══════════════════════════════════════════════════════════
+// Auth Store - Production Grade with Zustand
+// ═══════════════════════════════════════════════════════════
+
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { authApi } from '../api/services/authApi';
 import StorageService from '../services/StorageService';
-import { STORAGE_KEYS } from '../api/config';
-import { ToastService } from '../services/ToastService';
+import type { User, LoginRequest, RegisterRequest, ApiErrorResponse } from '../api/types';
 
-interface User {
-    id: string;
-    name: string;
-    email: string;
-    phone: string;
-    storeId: string;
-    storeName: string;
-    role: 'owner' | 'manager' | 'staff';
-}
+// ═══════════════════════════════════════════════════════════
+// TYPES
+// ═══════════════════════════════════════════════════════════
 
 interface AuthState {
+    // State
     user: User | null;
+    token: string | null;
     isAuthenticated: boolean;
     isLoading: boolean;
-    login: (email: string, password: string) => Promise<boolean>;
-    logout: () => void;
-    updateUser: (updates: Partial<User>) => void;
-    checkAuth: () => Promise<void>;
+    isInitialized: boolean;
+    error: string | null;
+
+    // Actions
+    login: (credentials: LoginRequest) => Promise<boolean>;
+    logout: () => Promise<void>;
+    initialize: () => void;
+    setError: (error: string | null) => void;
+    clearError: () => void;
+    updateUser: (user: Partial<User>) => void;
 }
 
-const storage = {
+// ═══════════════════════════════════════════════════════════
+// STORAGE ADAPTER (MMKV)
+// ═══════════════════════════════════════════════════════════
+
+const zustandStorage = {
     getItem: (name: string) => {
         const value = StorageService.getString(name);
-        return value ? Promise.resolve(value) : null;
+        return value ? Promise.resolve(value) : Promise.resolve(null);
     },
     setItem: (name: string, value: string) => {
         StorageService.setString(name, value);
@@ -39,80 +49,170 @@ const storage = {
     },
 };
 
+// ═══════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Extract error message from API error response
+ */
+const getErrorMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+        // Check for axios error with response
+        const axiosError = error as any;
+        if (axiosError.response?.data) {
+            const apiError = axiosError.response.data as ApiErrorResponse;
+            return apiError.message || 'An error occurred';
+        }
+        return error.message;
+    }
+    return 'An unexpected error occurred';
+};
+
+// ═══════════════════════════════════════════════════════════
+// AUTH STORE
+// ═══════════════════════════════════════════════════════════
+
 export const useAuthStore = create<AuthState>()(
     persist(
         (set, get) => ({
+            // Initial State
             user: null,
+            token: null,
             isAuthenticated: false,
-            isLoading: true,
+            isLoading: false,
+            isInitialized: false,
+            error: null,
 
-            checkAuth: async () => {
-                // With Zustand persist, state is rehydrated automatically.
-                // However, we might want to validate the token with the backend here.
-                set({ isLoading: false });
+            /**
+             * Initialize auth state from storage
+             * Called on app startup
+             */
+            initialize: () => {
+                const storedUser = authApi.getStoredUser();
+                const isAuthenticated = authApi.isAuthenticated();
+
+                set({
+                    user: storedUser,
+                    isAuthenticated: isAuthenticated && !!storedUser,
+                    isInitialized: true,
+                });
             },
 
-            login: async (email, password) => {
+            /**
+             * Login with email and password
+             * Returns true on success, false on failure
+             */
+            login: async (credentials: LoginRequest): Promise<boolean> => {
+                set({ isLoading: true, error: null });
+
                 try {
-                    set({ isLoading: true });
+                    const response = await authApi.login(credentials);
 
-                    // TODO: Replace with actual API call
-                    // const response = await authApi.login(email, password);
+                    if (response.success && response.data) {
+                        const { user, token } = response.data;
 
-                    // Mock successful login
-                    // Simulate API delay
-                    await new Promise(resolve => setTimeout(() => resolve(true), 1000));
+                        set({
+                            user,
+                            token,
+                            isAuthenticated: true,
+                            isLoading: false,
+                            error: null,
+                        });
 
-                    const mockUser: User = {
-                        id: '1',
-                        name: 'Store Owner',
-                        email: email,
-                        phone: '+91 9876543210',
-                        storeId: 'store-1',
-                        storeName: 'MediCare Pharmacy',
-                        role: 'owner',
-                    };
-
-                    const mockToken = 'mock-jwt-token-xyz';
-
-                    // Token is stored via persist middleware if we include it in state, 
-                    // or we handle it separately if we want to keep it out of the general store.
-                    // For now, let's assume the persist middleware handles the state sync, 
-                    // but we might want to explicitly set the token in StorageService for axios interceptors.
-                    StorageService.setString(STORAGE_KEYS.AUTH_TOKEN, mockToken);
-
-                    set({
-                        user: mockUser,
-                        isAuthenticated: true,
-                        isLoading: false
-                    });
-
-                    ToastService.success({ title: 'Welcome back!', message: mockUser.storeName });
-                    return true;
+                        return true;
+                    } else {
+                        set({
+                            isLoading: false,
+                            error: response.message || 'Login failed',
+                        });
+                        return false;
+                    }
                 } catch (error) {
-                    set({ isLoading: false });
-                    ToastService.error({ title: 'Login Failed', message: 'Invalid credentials' });
+                    const errorMessage = getErrorMessage(error);
+                    set({
+                        isLoading: false,
+                        error: errorMessage,
+                    });
                     return false;
                 }
             },
 
-            logout: () => {
-                StorageService.remove(STORAGE_KEYS.AUTH_TOKEN);
-                set({ user: null, isAuthenticated: false });
-                ToastService.info({ title: 'Logged out', message: 'See you soon!' });
+            /**
+             * Logout user and clear all auth data
+             */
+            logout: async () => {
+                set({ isLoading: true });
+
+                try {
+                    await authApi.logout();
+                } catch (error) {
+                    // Ignore logout errors
+                    console.warn('Logout error:', error);
+                } finally {
+                    set({
+                        user: null,
+                        token: null,
+                        isAuthenticated: false,
+                        isLoading: false,
+                        error: null,
+                    });
+                }
             },
 
-            updateUser: (updates) => {
-                const { user } = get();
-                if (user) {
-                    set({ user: { ...user, ...updates } });
+            /**
+             * Set error message
+             */
+            setError: (error: string | null) => set({ error }),
+
+            /**
+             * Clear error message
+             */
+            clearError: () => set({ error: null }),
+
+            /**
+             * Update user data locally
+             */
+            updateUser: (userData: Partial<User>) => {
+                const currentUser = get().user;
+                if (currentUser) {
+                    set({
+                        user: { ...currentUser, ...userData },
+                    });
                 }
             },
         }),
         {
-            name: 'auth-storage', // unique name
-            storage: createJSONStorage(() => storage),
-            partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }), // Only persist user and auth status, not loading
+            name: 'auth-storage',
+            storage: createJSONStorage(() => zustandStorage),
+            // Only persist these fields
+            partialize: (state) => ({
+                user: state.user,
+                token: state.token,
+                isAuthenticated: state.isAuthenticated,
+            }),
         }
     )
 );
+
+// ═══════════════════════════════════════════════════════════
+// SELECTORS - Optimized subscriptions
+// ═══════════════════════════════════════════════════════════
+
+export const selectUser = (state: AuthState) => state.user;
+export const selectIsAuthenticated = (state: AuthState) => state.isAuthenticated;
+export const selectIsLoading = (state: AuthState) => state.isLoading;
+export const selectIsInitialized = (state: AuthState) => state.isInitialized;
+export const selectAuthError = (state: AuthState) => state.error;
+export const selectUserRole = (state: AuthState) => state.user?.role;
+export const selectUserName = (state: AuthState) => state.user?.name;
+export const selectUserEmail = (state: AuthState) => state.user?.email;
+export const selectUserProfileImage = (state: AuthState) => state.user?.ProfileImage?.[0];
+
+// Compound selectors
+export const selectAuthState = (state: AuthState) => ({
+    isAuthenticated: state.isAuthenticated,
+    isLoading: state.isLoading,
+    error: state.error,
+});
+

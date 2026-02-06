@@ -7,6 +7,7 @@ export type ThemeMode = 'light' | 'dark' | 'system';
 
 export interface ThemeColors {
     background: string;
+    surface: string;
     card: string;
     text: string;
     textSecondary: string;
@@ -24,6 +25,7 @@ export interface ThemeColors {
 
 export const lightColors: ThemeColors = {
     background: '#F5F5F5',
+    surface: '#FFFFFF',
     card: '#FFFFFF',
     text: '#1A1A1A',
     textSecondary: '#666666',
@@ -37,6 +39,7 @@ export const lightColors: ThemeColors = {
 
 export const darkColors: ThemeColors = {
     background: '#0A0A0A',
+    surface: '#1A1A1A',
     card: '#1A1A1A',
     text: '#FFFFFF',
     textSecondary: '#A0A0A0',

@@ -35,7 +35,7 @@ const ONBOARDING_DATA = [
         description: 'Monitor your refill dates and get exclusive discounts on monthly subscriptions.',
         image: 'https://static.vecteezy.com/system/resources/thumbnails/010/916/350/small/3d-mobile-phone-delivery-truck-online-shopping-fast-delivery-service-png.png',
         bgParams: { circle1: '#fa709a', circle2: '#fee140' }, // Orange/Pink theme
-        dimensions: { width: width * 1.2, height: width * 1.2, marginBottom: 10 ,}
+        dimensions: { width: width * 1.2, height: width * 1.2, marginBottom: 10, }
     }
 ];
 
@@ -139,7 +139,7 @@ const StartPage = () => {
         if (currentIndex < ONBOARDING_DATA.length - 1) {
             animateToSlide(currentIndex + 1);
         } else {
-            navigation.navigate('MainTabs');
+            navigation.navigate('Login');
         }
     };
 
@@ -150,7 +150,7 @@ const StartPage = () => {
     };
 
     const skip = () => {
-        navigation.navigate('MainTabs');
+        navigation.navigate('Login');
     };
 
     const animateToSlide = (nextIndex: number) => {
@@ -322,7 +322,7 @@ const styles = StyleSheet.create({
         // but flex is flexible.
         alignItems: 'center',
         justifyContent: 'center',
-      marginTop: -80,
+        marginTop: -80,
     },
     image: {
         // Base dimensions overridden inline
